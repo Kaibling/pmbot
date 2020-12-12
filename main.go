@@ -25,11 +25,6 @@ var version = "0.1"
 var appName = "redditDiscordBot"
 
 func init() {
-	file, err := os.OpenFile(appName+".log", os.O_APPEND|os.O_CREATE|os.O_RDWR, 0666)
-	if err != nil {
-		log.Errorf("error opening file: %v", err)
-	}
-	log.SetOutput(file)
 	log.SetReportCaller(true)
 	log.SetLevel(log.DebugLevel)
 }
