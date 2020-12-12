@@ -21,8 +21,7 @@ func (r *GrabBot) Post(post *reddit.Post) error {
 
 //Start -
 func (r *GrabBot) Start() {
-	//FreeGameFindings
-	cfg := graw.Config{Subreddits: []string{"askreddit"}}
+	cfg := graw.Config{Subreddits: []string{"FreeGameFindings"}}
 	_, wait, err := graw.Run(r, r.bot, cfg)
 	if err != nil {
 		log.Errorln("Failed to start graw run: ", err)
