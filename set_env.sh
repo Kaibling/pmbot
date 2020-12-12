@@ -1,0 +1,5 @@
+export REDDIT_CLIENT_ID=""
+export REDDIT_SECRET=""
+export REDDIT_USERNAME=""
+export REDDIT_PASSWORD=""
+export DISCORD_TOKEN=""
