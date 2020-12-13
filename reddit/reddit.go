@@ -1,40 +1,52 @@
 package reddit
 
 import (
-	"github.com/turnage/graw"
-	"github.com/turnage/graw/reddit"
+	"pmbBot/utils"
+	"sync"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/turnage/graw"
+	"github.com/turnage/graw/reddit"
 )
 
 //GrabBot sds
 type GrabBot struct {
-	bot reddit.Bot
-	c   chan<- string
+	bot    reddit.Bot
+	c      chan<- utils.ChannelMessage
+	stopFn func()
+	wg     *sync.WaitGroup
 }
 
 //Post -
 func (r *GrabBot) Post(post *reddit.Post) error {
-	r.c <- post.Title + "\n" + post.URL
+	r.c <- utils.ChannelMessage{Topic: "REDDIT_FREE_GAME", Content: post.Title + "\n" + post.URL}
 	return nil
 }
 
+//Stop -
+func (r *GrabBot) Stop() {
+	r.stopFn()
+	log.Info("redditbot stopped")
+	r.wg.Done()
+}
+
 //Start -
-func (r *GrabBot) Start() {
+func (r *GrabBot) Start(wg *sync.WaitGroup) {
 	//FreeGameFindings
 	cfg := graw.Config{Subreddits: []string{"askreddit"}}
-	_, wait, err := graw.Run(r, r.bot, cfg)
+	stop, wait, err := graw.Run(r, r.bot, cfg)
 	if err != nil {
 		log.Errorln("Failed to start graw run: ", err)
-	} else {
-		log.Infoln("Redditbot started")
-		wait()
+		return
 	}
+	r.stopFn = stop
+	r.wg = wg
+	log.Infoln("Redditbot started")
+	wait()
 }
 
 //InitRedditBot -
-func InitRedditBot(c chan<- string, username string, clientID string, secret string, password string, version string) *GrabBot {
-
+func InitModule(c chan<- utils.ChannelMessage, username string, clientID string, secret string, password string, version string) *GrabBot {
 	agentString := "grab_data:redditdisc:" + version + " by " + username
 	botcfg := reddit.BotConfig{
 		Agent: agentString,

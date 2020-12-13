@@ -1,8 +1,8 @@
 package discord
 
 import (
-	"encoding/json"
-	"os"
+	"pmbBot/utils"
+	"sync"
 
 	"github.com/bwmarrin/discordgo"
 	log "github.com/sirupsen/logrus"
@@ -11,8 +11,8 @@ import (
 //DiscBot struct holds data
 type DiscBot struct {
 	bot *discordgo.Session
-	c   <-chan string
-	sc  <-chan os.Signal
+	c   <-chan utils.ChannelMessage
+	wg  *sync.WaitGroup
 }
 
 //SendNewData sends the message to the channel
@@ -22,22 +22,29 @@ func (selfDiscBot *DiscBot) SendNewData(data string, channelID string) {
 }
 
 //Start Starts the discord bot
-func (selfDiscBot *DiscBot) Start() {
+func (selfDiscBot *DiscBot) Start(wg *sync.WaitGroup) {
 	err := selfDiscBot.bot.Open()
 	if err != nil {
 		log.Errorln("Error starting server: ", err)
 		return
 	}
+	selfDiscBot.wg = wg
 
 	// Wait here until CTRL-C or other term signal is received.
 	log.Infoln("Bot is now running.  Press CTRL-C to exit.")
-	<-selfDiscBot.sc
-	selfDiscBot.bot.Close()
+	for {
+		request := <-selfDiscBot.c
+		if request.Topic == "REDDIT_FREE_GAME" {
+			selfDiscBot.SendNewData(request.Content.(string), "786978601891135519")
+		}
+	}
 }
 
 //Stop stops the discordserver
 func (selfDiscBot *DiscBot) Stop() {
 	selfDiscBot.bot.Close()
+	log.Infoln("Discort bot stopped")
+	selfDiscBot.wg.Done()
 }
 
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
@@ -70,12 +77,11 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		response := m.Author.Username + ": " + m.Content + "\n"
 		s.ChannelMessageSend(m.ChannelID, response)
 		log.Infof("send %s to %s\n", response, m.ChannelID)
-
 	}
 }
 
-//InitBot configures Discord bot
-func InitBot(c <-chan string, sc <-chan os.Signal, token string) *DiscBot {
+//Init configures Discord bot
+func InitModule(c <-chan utils.ChannelMessage, token string) *DiscBot {
 	log.Infoln("https://discord.com/oauth2/authorize?client_id=194006667195580416&scope=bot")
 	dg, err := discordgo.New("Bot " + token)
 	if err != nil {
@@ -83,11 +89,5 @@ func InitBot(c <-chan string, sc <-chan os.Signal, token string) *DiscBot {
 		return nil
 	}
 	dg.AddHandler(messageCreate)
-	//dg.Identify.Intents = discordgo.MakeIntent(discordgo.IntentsGuildMessages | discordgo.IntentsDirectMessages)
 	return &DiscBot{bot: dg, c: c}
-}
-
-func pretty(data interface{}) string {
-	a, _ := json.MarshalIndent(data, "", " ")
-	return string(a)
 }
