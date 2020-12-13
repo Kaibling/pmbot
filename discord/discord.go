@@ -1,6 +1,7 @@
 package discord
 
 import (
+	"encoding/json"
 	"os"
 
 	"github.com/bwmarrin/discordgo"
@@ -17,6 +18,7 @@ type DiscBot struct {
 //SendNewData sends the message to the channel
 func (selfDiscBot *DiscBot) SendNewData(data string, channelID string) {
 	selfDiscBot.bot.ChannelMessageSend(channelID, data)
+	log.Infof("send %s to %s\n", data, channelID)
 }
 
 //Start Starts the discord bot
@@ -39,22 +41,36 @@ func (selfDiscBot *DiscBot) Stop() {
 }
 
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
-	c, err := s.State.Channel(m.ChannelID)
-	if err != nil {
+	if m.Author.ID == s.State.User.ID {
 		return
 	}
 
-	g, err := s.State.Guild(c.GuildID)
-	if err != nil {
+	if m.GuildID == "" {
+		log.Infof("Private Message %s %s", m.ChannelID, m.Author.Username)
 		return
 	}
 
-	if m.ChannelID == "786978601891135519" {
-		if m.Author.ID == s.State.User.ID {
+	/*
+		c, err := s.State.Channel(m.ChannelID)
+		if err != nil {
+			log.Error(err)
 			return
 		}
-		response := m.Author.Username + ": " + m.Content + "\n" + g.Name + ":" + c.Name
+	*/
+
+	/*
+		g, err := s.State.Guild(c.GuildID)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+	*/
+	log.Infof("%s %s", m.ChannelID, m.Author.Username)
+	if m.ChannelID == "786978601891135519" {
+		response := m.Author.Username + ": " + m.Content + "\n"
 		s.ChannelMessageSend(m.ChannelID, response)
+		log.Infof("send %s to %s\n", response, m.ChannelID)
+
 	}
 }
 
@@ -67,5 +83,11 @@ func InitBot(c <-chan string, sc <-chan os.Signal, token string) *DiscBot {
 		return nil
 	}
 	dg.AddHandler(messageCreate)
+	//dg.Identify.Intents = discordgo.MakeIntent(discordgo.IntentsGuildMessages | discordgo.IntentsDirectMessages)
 	return &DiscBot{bot: dg, c: c}
+}
+
+func pretty(data interface{}) string {
+	a, _ := json.MarshalIndent(data, "", " ")
+	return string(a)
 }
