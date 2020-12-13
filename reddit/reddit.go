@@ -31,10 +31,9 @@ func (r *GrabBot) Stop() {
 }
 
 //Start -
-func (r *GrabBot) Start(wg *sync.WaitGroup) {
-	//FreeGameFindings
-	cfg := graw.Config{Subreddits: []string{"askreddit"}}
-	stop, wait, err := graw.Run(r, r.bot, cfg)
+func (r *GrabBot) Start() {
+	cfg := graw.Config{Subreddits: []string{"FreeGameFindings"}}
+	_, wait, err := graw.Run(r, r.bot, cfg)
 	if err != nil {
 		log.Errorln("Failed to start graw run: ", err)
 		return
