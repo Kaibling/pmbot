@@ -1,7 +1,8 @@
 package reddit
 
 import (
-	"pmbBot/utils"
+	"pmbBot/broker"
+	"pmbBot/configuration"
 	"sync"
 
 	log "github.com/sirupsen/logrus"
@@ -11,42 +12,27 @@ import (
 
 //GrabBot sds
 type GrabBot struct {
-	bot    reddit.Bot
-	c      chan<- utils.ChannelMessage
-	stopFn func()
-	wg     *sync.WaitGroup
+	bot            reddit.Bot
+	c              chan<- broker.ChannelMessage
+	stopFn         func()
+	wg             *sync.WaitGroup
+	subReddit      string
+	name           string
+	publicChannel  broker.MultiPlexChannel
+	privateChannel broker.MultiPlexChannel
 }
 
 //Post -
 func (r *GrabBot) Post(post *reddit.Post) error {
-	r.c <- utils.ChannelMessage{Topic: "REDDIT_FREE_GAME", Content: post.Title + "\n" + post.URL}
+	if post.Subreddit == r.subReddit {
+		r.publicChannel.OutgoingChannel <- broker.ChannelMessage{Topic: "REDDIT", Content: post.Title + "\n" + post.URL}
+	}
 	return nil
 }
 
-//Stop -
-func (r *GrabBot) Stop() {
-	r.stopFn()
-	log.Info("redditbot stopped")
-	r.wg.Done()
-}
-
-//Start -
-func (r *GrabBot) Start() {
-	cfg := graw.Config{Subreddits: []string{"FreeGameFindings"}}
-	_, wait, err := graw.Run(r, r.bot, cfg)
-	if err != nil {
-		log.Errorln("Failed to start graw run: ", err)
-		return
-	}
-	r.stopFn = stop
-	r.wg = wg
-	log.Infoln("Redditbot started")
-	wait()
-}
-
-//InitRedditBot -
-func InitModule(c chan<- utils.ChannelMessage, username string, clientID string, secret string, password string, version string) *GrabBot {
-	agentString := "grab_data:redditdisc:" + version + " by " + username
+//InitModule -
+func InitModule(c chan<- broker.ChannelMessage, username string, clientID string, secret string, password string, subReddit string) *GrabBot {
+	agentString := "grab_data:redditdisc:" + configuration.Configuration.Variables["Version"] + " by " + username
 	botcfg := reddit.BotConfig{
 		Agent: agentString,
 		App: reddit.App{
@@ -57,5 +43,51 @@ func InitModule(c chan<- utils.ChannelMessage, username string, clientID string,
 		},
 	}
 	bot, _ := reddit.NewBot(botcfg)
-	return &GrabBot{bot: bot, c: c}
+	return &GrabBot{bot: bot, c: c, subReddit: subReddit, name: "REDDIT"}
+}
+
+//Start -
+func (r *GrabBot) Start(wg *sync.WaitGroup) {
+	cfg := graw.Config{Subreddits: []string{r.subReddit}}
+	stop, wait, err := graw.Run(r, r.bot, cfg)
+	if err != nil {
+		log.Errorln("Failed to start graw run: ", err)
+		return
+	}
+	r.stopFn = stop
+	r.wg = wg
+	log.Infoln("reddit module is now running...")
+	go wait()
+
+	for {
+		var message broker.ChannelMessage
+		select {
+		case message = <-r.publicChannel.IncomingChannel:
+			log.Debugf("received %s", message.Topic)
+		case message = <-r.privateChannel.IncomingChannel:
+			log.Debugf("privateChannel: received %s", message.Topic)
+		}
+		if message.Topic == "STATUS" {
+			r.privateChannel.OutgoingChannel <- broker.ChannelMessage{Topic: "STATUS", Sender: r.name, Content: "OK"}
+			log.Debugf("privateChannel: Healthcheck fine ")
+
+		}
+	}
+
+}
+
+//Stop -
+func (r *GrabBot) Stop() {
+	r.stopFn()
+	log.Info("redditbot stopped")
+	r.wg.Done()
+}
+
+func (r *GrabBot) GetServiceName() string {
+	return r.name
+}
+
+func (r *GrabBot) SetChannels(pubChannel broker.MultiPlexChannel, privChannel broker.MultiPlexChannel) {
+	r.publicChannel = pubChannel
+	r.privateChannel = privChannel
 }

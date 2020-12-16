@@ -1,7 +1,8 @@
 package discord
 
 import (
-	"pmbBot/utils"
+	"pmbBot/broker"
+	"pmbBot/configuration"
 	"sync"
 
 	"github.com/bwmarrin/discordgo"
@@ -10,15 +11,31 @@ import (
 
 //DiscBot struct holds data
 type DiscBot struct {
-	bot *discordgo.Session
-	c   <-chan utils.ChannelMessage
-	wg  *sync.WaitGroup
+	name           string
+	bot            *discordgo.Session
+	c              <-chan broker.ChannelMessage
+	publicChannel  broker.MultiPlexChannel
+	privateChannel broker.MultiPlexChannel
+	wg             *sync.WaitGroup
 }
 
 //SendNewData sends the message to the channel
 func (selfDiscBot *DiscBot) SendNewData(data string, channelID string) {
 	selfDiscBot.bot.ChannelMessageSend(channelID, data)
 	log.Infof("send %s to %s\n", data, channelID)
+}
+
+//InitModule configures Discord bot
+func InitModule(c <-chan broker.ChannelMessage, token string) *DiscBot {
+	log.Infoln("https://discord.com/oauth2/authorize?client_id=194006667195580416&scope=bot")
+	dg, err := discordgo.New("Bot " + token)
+	if err != nil {
+		log.Errorln("Error creating Discord session: ", err)
+		return nil
+	}
+	returBot := &DiscBot{bot: dg, c: c, name: "DISCORD"}
+	dg.AddHandler(returBot.messageCreate)
+	return returBot
 }
 
 //Start Starts the discord bot
@@ -30,13 +47,18 @@ func (selfDiscBot *DiscBot) Start(wg *sync.WaitGroup) {
 	}
 	selfDiscBot.wg = wg
 
-	// Wait here until CTRL-C or other term signal is received.
-	log.Infoln("Bot is now running.  Press CTRL-C to exit.")
+	log.Infoln("discord module is now running...")
 	for {
-		request := <-selfDiscBot.c
-		if request.Topic == "REDDIT_FREE_GAME" {
+		request := <-selfDiscBot.publicChannel.IncomingChannel
+		log.Debugf("request: %#v", request)
+		if request.Topic == "REDDIT" {
 			selfDiscBot.SendNewData(request.Content.(string), "786978601891135519")
 		}
+		if request.Topic == "STATUS" {
+			selfDiscBot.privateChannel.OutgoingChannel <- broker.ChannelMessage{Topic: "STATUS", Sender: selfDiscBot.name, Content: "OK"}
+			log.Debugf("privateChannel: Healthcheck fine ")
+		}
+
 	}
 }
 
@@ -46,48 +68,47 @@ func (selfDiscBot *DiscBot) Stop() {
 	log.Infoln("Discort bot stopped")
 	selfDiscBot.wg.Done()
 }
+func (selfDiscBot *DiscBot) GetServiceName() string {
+	return selfDiscBot.name
+}
+func (selfDiscBot *DiscBot) SetChannels(pubChannel broker.MultiPlexChannel, privChannel broker.MultiPlexChannel) {
+	selfDiscBot.publicChannel = pubChannel
+	selfDiscBot.privateChannel = privChannel
+}
 
-func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
+func (selfDiscBot *DiscBot) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if m.Author.ID == s.State.User.ID {
 		return
 	}
 
 	if m.GuildID == "" {
 		log.Infof("Private Message %s %s", m.ChannelID, m.Author.Username)
+		if m.Content == "version" {
+			s.ChannelMessageSend(m.ChannelID, configuration.Configuration.Variables["Version"])
+		}
+		if m.Content == "status" {
+			log.Debugf("Status request from %s\n sending to %v", m.Author.Username, selfDiscBot.privateChannel.OutgoingChannel)
+			statusRequest := broker.NewChannelMessage(selfDiscBot.name, "STATUS")
+			selfDiscBot.privateChannel.OutgoingChannel <- statusRequest
+			//selfDiscBot.privateChannel <- broker.ChannelMessage{Topic: "STATUS", Sender: selfDiscBot.name}
+			log.Debugf("waiting for broker on %#v", selfDiscBot.privateChannel.IncomingChannel)
+			response := <-selfDiscBot.privateChannel.IncomingChannel
+			//response, err := broker.WaitForResponse(selfDiscBot.privateChannel.IncomingChannel, statusRequest.MessageID)
+			//if err != nil {
+			//	log.Error(err)
+			//}
+			//response := <-selfDiscBot.privateChannel
+			log.Debugf("Response from %#v %#v", selfDiscBot.privateChannel, response)
+			s.ChannelMessageSend(m.ChannelID, response.Content.(string))
+			log.Debugf("status message sent to %s %s\n", m.ChannelID, m.Author.Username)
+		}
 		return
 	}
 
-	/*
-		c, err := s.State.Channel(m.ChannelID)
-		if err != nil {
-			log.Error(err)
-			return
-		}
-	*/
-
-	/*
-		g, err := s.State.Guild(c.GuildID)
-		if err != nil {
-			log.Error(err)
-			return
-		}
-	*/
 	log.Infof("%s %s", m.ChannelID, m.Author.Username)
 	if m.ChannelID == "786978601891135519" {
 		response := m.Author.Username + ": " + m.Content + "\n"
 		s.ChannelMessageSend(m.ChannelID, response)
 		log.Infof("send %s to %s\n", response, m.ChannelID)
 	}
-}
-
-//Init configures Discord bot
-func InitModule(c <-chan utils.ChannelMessage, token string) *DiscBot {
-	log.Infoln("https://discord.com/oauth2/authorize?client_id=194006667195580416&scope=bot")
-	dg, err := discordgo.New("Bot " + token)
-	if err != nil {
-		log.Errorln("Error creating Discord session: ", err)
-		return nil
-	}
-	dg.AddHandler(messageCreate)
-	return &DiscBot{bot: dg, c: c}
 }
