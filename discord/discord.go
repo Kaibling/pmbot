@@ -1,8 +1,8 @@
 package discord
 
 import (
-	"pmBot/broker"
-	"pmBot/configuration"
+	"pmbot/broker"
+	"pmbot/configuration"
 	"sync"
 
 	"github.com/bwmarrin/discordgo"
@@ -13,9 +13,8 @@ import (
 type DiscBot struct {
 	name           string
 	bot            *discordgo.Session
-	c              <-chan broker.ChannelMessage
-	publicChannel  broker.MultiPlexChannel
-	privateChannel broker.MultiPlexChannel
+	publicChannel  *broker.MultiPlexChannel
+	privateChannel *broker.MultiPlexChannel
 	wg             *sync.WaitGroup
 }
 
@@ -26,20 +25,26 @@ func (selfDiscBot *DiscBot) SendNewData(data string, channelID string) {
 }
 
 //InitModule configures Discord bot
-func InitModule(c <-chan broker.ChannelMessage, token string) *DiscBot {
+func InitModule(token string) *DiscBot {
 	log.Infoln("https://discord.com/oauth2/authorize?client_id=194006667195580416&scope=bot")
 	dg, err := discordgo.New("Bot " + token)
 	if err != nil {
 		log.Errorln("Error creating Discord session: ", err)
 		return nil
 	}
-	returBot := &DiscBot{bot: dg, c: c, name: "DISCORD"}
+	returBot := &DiscBot{bot: dg, name: "DISCORD"}
 	dg.AddHandler(returBot.messageCreate)
 	return returBot
 }
 
 //Start Starts the discord bot
 func (selfDiscBot *DiscBot) Start(wg *sync.WaitGroup) {
+	if selfDiscBot.publicChannel == nil || selfDiscBot.privateChannel == nil {
+		log.Errorf("Channels not initilized %#v %#v", selfDiscBot.publicChannel, selfDiscBot.privateChannel)
+		return
+
+	}
+
 	err := selfDiscBot.bot.Open()
 	if err != nil {
 		log.Errorln("Error starting server: ", err)
@@ -72,8 +77,8 @@ func (selfDiscBot *DiscBot) GetServiceName() string {
 	return selfDiscBot.name
 }
 func (selfDiscBot *DiscBot) SetChannels(pubChannel broker.MultiPlexChannel, privChannel broker.MultiPlexChannel) {
-	selfDiscBot.publicChannel = pubChannel
-	selfDiscBot.privateChannel = privChannel
+	selfDiscBot.publicChannel = &pubChannel
+	selfDiscBot.privateChannel = &privChannel
 }
 
 func (selfDiscBot *DiscBot) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {

@@ -12,6 +12,8 @@ type messageService struct {
 	publicChannel  *MultiPlexChannel
 	privateChannel *MultiPlexChannel
 }
+
+//MultiPlexChannel -
 type MultiPlexChannel struct {
 	IncomingChannel chan ChannelMessage
 	OutgoingChannel chan ChannelMessage
@@ -50,30 +52,32 @@ type Module interface {
 type ChannelMessage struct {
 	Topic   string
 	Content interface{}
-	//channel chan ChannelMessage
-	Sender string
-	//MessageID string
-	//status    string
+	Sender  string
 }
 
+//NewChannelMessage -
 func NewChannelMessage(sender string, topic string) ChannelMessage {
 	returnMessage := ChannelMessage{Sender: sender, Topic: topic}
-	//uuidWithHyphen := uuid.New()
-	//returnMessage.MessageID = strings.Replace(uuidWithHyphen.String(), "-", "", -1)
 	return returnMessage
 }
 
+//Broker -
 type Broker struct {
 	services      map[string]messageService
 	subscriptions map[string][]string
+	blocker       chan ChannelMessage
 }
 
+//InitBroker -
 func InitBroker() *Broker {
 	broker := &Broker{}
 	broker.services = make(map[string]messageService)
 	broker.subscriptions = make(map[string][]string)
+	broker.blocker = make(chan ChannelMessage)
 	return broker
 }
+
+//AddService -
 func (selfBroker *Broker) AddService(module Module) {
 
 	pubChannel := newMultiPlexChannel()
@@ -90,21 +94,31 @@ func (selfBroker *Broker) AddService(module Module) {
 
 }
 
-func (selfBroker *Broker) SubscribeTopic(serviceName, topic string) {
+//SubscribeTopic -
+func (selfBroker *Broker) SubscribeTopic(serviceName, topic string) error {
+	if _, ok := selfBroker.services[serviceName]; !ok {
+		selfBroker.subscriptions[topic] = []string{serviceName}
+		return nil
+	}
 	selfBroker.subscriptions[topic] = append(selfBroker.subscriptions[topic], serviceName)
+	return nil
 }
 
-func (selfBroker *Broker) SendMessage(serviceName string, message ChannelMessage) {
+func (selfBroker *Broker) sendMessage(serviceName string, message ChannelMessage) {
 	log.Debugf("send to %s", serviceName)
-	selfBroker.services[serviceName].publicChannel.send(message)
-	log.Debugf("sent")
+	val, ok := selfBroker.services[serviceName]
+	if !ok {
+		log.Errorf("no service %s saved in broker", serviceName)
+		return
+	}
+	val.publicChannel.send(message)
 }
 
 func (selfBroker *Broker) processMessage(message ChannelMessage) {
 
 	//Broadcast
 	for _, value := range selfBroker.subscriptions[message.Topic] {
-		selfBroker.SendMessage(value, message)
+		selfBroker.sendMessage(value, message)
 	}
 
 	if message.Topic == "STATUS" {
@@ -149,8 +163,21 @@ func recvFromAny(chs []chan ChannelMessage) (val ChannelMessage, from int) {
 	return
 }
 
+//Stop -
+func (selfBroker *Broker) Stop() {
+	selfBroker.blocker <- ChannelMessage{Topic: "SHUTDOWN"}
+}
+
+//Start -
 func (selfBroker *Broker) Start() {
-	channels := []chan ChannelMessage{}
+
+	//Debug for routing
+	log.Debugf("routes %d", len(selfBroker.subscriptions))
+	for key, val := range selfBroker.subscriptions {
+		log.Debugf("Subscription topic: %s service: %s", key, val)
+	}
+
+	channels := []chan ChannelMessage{selfBroker.blocker}
 	for _, val := range selfBroker.services {
 		channels = append(channels, val.privateChannel.IncomingChannel)
 		channels = append(channels, val.publicChannel.IncomingChannel)
@@ -159,6 +186,10 @@ func (selfBroker *Broker) Start() {
 	for {
 		message, x := recvFromAny(channels)
 		log.Debugf("Received %v from ch%v", message, x)
+		if message.Topic == "SHUTDOWN" && channels[x] == selfBroker.blocker {
+			log.Info("Broker stopped")
+			return
+		}
 		selfBroker.processMessage(message)
 	}
 }

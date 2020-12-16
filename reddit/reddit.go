@@ -1,8 +1,8 @@
 package reddit
 
 import (
-	"pmBot/broker"
-	"pmBot/configuration"
+	"pmbot/broker"
+	"pmbot/configuration"
 	"sync"
 
 	log "github.com/sirupsen/logrus"
@@ -13,7 +13,6 @@ import (
 //GrabBot sds
 type GrabBot struct {
 	bot            reddit.Bot
-	c              chan<- broker.ChannelMessage
 	stopFn         func()
 	wg             *sync.WaitGroup
 	subReddit      string
@@ -31,7 +30,7 @@ func (r *GrabBot) Post(post *reddit.Post) error {
 }
 
 //InitModule -
-func InitModule(c chan<- broker.ChannelMessage, username string, clientID string, secret string, password string, subReddit string) *GrabBot {
+func InitModule(username string, clientID string, secret string, password string, subReddit string) *GrabBot {
 	agentString := "grab_data:redditdisc:" + configuration.Configuration.Variables["Version"] + " by " + username
 	botcfg := reddit.BotConfig{
 		Agent: agentString,
@@ -43,7 +42,7 @@ func InitModule(c chan<- broker.ChannelMessage, username string, clientID string
 		},
 	}
 	bot, _ := reddit.NewBot(botcfg)
-	return &GrabBot{bot: bot, c: c, subReddit: subReddit, name: "REDDIT"}
+	return &GrabBot{bot: bot, subReddit: subReddit, name: "REDDIT"}
 }
 
 //Start -
@@ -70,7 +69,6 @@ func (r *GrabBot) Start(wg *sync.WaitGroup) {
 		if message.Topic == "STATUS" {
 			r.privateChannel.OutgoingChannel <- broker.ChannelMessage{Topic: "STATUS", Sender: r.name, Content: "OK"}
 			log.Debugf("privateChannel: Healthcheck fine ")
-
 		}
 	}
 

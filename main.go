@@ -3,10 +3,10 @@ package main
 import (
 	"os"
 	"os/signal"
-	"pmBot/broker"
-	"pmBot/configuration"
-	"pmBot/discord"
-	"pmBot/reddit"
+	"pmbot/broker"
+	"pmbot/configuration"
+	"pmbot/discord"
+	"pmbot/reddit"
 	"sync"
 	"syscall"
 
@@ -41,7 +41,6 @@ func init() {
 }
 
 func main() {
-	c1 := make(chan broker.ChannelMessage)
 	sc := make(chan os.Signal, 1)
 
 	//INIT MODULES
@@ -49,7 +48,7 @@ func main() {
 
 	//reddit
 
-	modules = append(modules, reddit.InitModule(c1,
+	modules = append(modules, reddit.InitModule(
 		configuration.Configuration.Reddit.Username,
 		configuration.Configuration.Reddit.ClientID,
 		configuration.Configuration.Reddit.Secret,
@@ -57,7 +56,7 @@ func main() {
 		configuration.Configuration.Variables["subreddit"]))
 
 	//discord
-	modules = append(modules, discord.InitModule(c1, configuration.Configuration.DiscordToken))
+	modules = append(modules, discord.InitModule(configuration.Configuration.DiscordToken))
 
 	brokerInstance := broker.InitBroker()
 	brokerInstance.SubscribeTopic("DISCORD", "REDDIT")
@@ -74,6 +73,7 @@ func main() {
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
 	for {
 		msg1 := <-sc
+		brokerInstance.Stop()
 		for _, module := range modules {
 			go module.Stop()
 		}
