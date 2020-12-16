@@ -39,18 +39,18 @@ func InitModule(token string) *DiscBot {
 
 //Start Starts the discord bot
 func (selfDiscBot *DiscBot) Start(wg *sync.WaitGroup) {
-	if selfDiscBot.publicChannel == nil || selfDiscBot.privateChannel == nil {
-		log.Errorf("Channels not initilized %#v %#v", selfDiscBot.publicChannel, selfDiscBot.privateChannel)
-		return
-
-	}
+	selfDiscBot.wg = wg
+	log.Infof("%#v", selfDiscBot.wg)
 
 	err := selfDiscBot.bot.Open()
 	if err != nil {
 		log.Errorln("Error starting server: ", err)
 		return
 	}
-	selfDiscBot.wg = wg
+	if selfDiscBot.publicChannel == nil || selfDiscBot.privateChannel == nil {
+		log.Errorf("Channels not initilized %#v %#v", selfDiscBot.publicChannel, selfDiscBot.privateChannel)
+		return
+	}
 
 	log.Infoln("discord module is now running...")
 	for {
@@ -69,9 +69,17 @@ func (selfDiscBot *DiscBot) Start(wg *sync.WaitGroup) {
 
 //Stop stops the discordserver
 func (selfDiscBot *DiscBot) Stop() {
-	selfDiscBot.bot.Close()
+	if selfDiscBot.bot == nil {
+		log.Errorf("bot cannot be closed and not be started")
+	} else {
+		selfDiscBot.bot.Close()
+	}
+	if selfDiscBot.wg == nil {
+		log.Errorf("Waitgroup cannot be done, if not started")
+	} else {
+		selfDiscBot.wg.Done()
+	}
 	log.Infoln("Discort bot stopped")
-	selfDiscBot.wg.Done()
 }
 func (selfDiscBot *DiscBot) GetServiceName() string {
 	return selfDiscBot.name

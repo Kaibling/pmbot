@@ -34,16 +34,6 @@ func (testModule *testModule) SetChannels(publicChannel broker.MultiPlexChannel,
 
 }
 
-/*
-func TestStartBroker(t *testing.T) {
-
-	broker := broker.InitBroker()
-	go broker.Start()
-	broker.Stop()
-
-}
-*/
-
 func TestBrokerAddServiceRight(t *testing.T) {
 
 	brokerInstance := broker.InitBroker()
