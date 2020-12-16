@@ -1,8 +1,8 @@
 package discord
 
 import (
-	"pmbBot/broker"
-	"pmbBot/configuration"
+	"pmBot/broker"
+	"pmBot/configuration"
 	"sync"
 
 	"github.com/bwmarrin/discordgo"
@@ -90,14 +90,8 @@ func (selfDiscBot *DiscBot) messageCreate(s *discordgo.Session, m *discordgo.Mes
 			log.Debugf("Status request from %s\n sending to %v", m.Author.Username, selfDiscBot.privateChannel.OutgoingChannel)
 			statusRequest := broker.NewChannelMessage(selfDiscBot.name, "STATUS")
 			selfDiscBot.privateChannel.OutgoingChannel <- statusRequest
-			//selfDiscBot.privateChannel <- broker.ChannelMessage{Topic: "STATUS", Sender: selfDiscBot.name}
 			log.Debugf("waiting for broker on %#v", selfDiscBot.privateChannel.IncomingChannel)
 			response := <-selfDiscBot.privateChannel.IncomingChannel
-			//response, err := broker.WaitForResponse(selfDiscBot.privateChannel.IncomingChannel, statusRequest.MessageID)
-			//if err != nil {
-			//	log.Error(err)
-			//}
-			//response := <-selfDiscBot.privateChannel
 			log.Debugf("Response from %#v %#v", selfDiscBot.privateChannel, response)
 			s.ChannelMessageSend(m.ChannelID, response.Content.(string))
 			log.Debugf("status message sent to %s %s\n", m.ChannelID, m.Author.Username)

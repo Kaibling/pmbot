@@ -1,4 +1,4 @@
-module pmbBot
+module pmBot
 
 go 1.15
 

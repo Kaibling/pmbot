@@ -1,8 +1,8 @@
 package reddit
 
 import (
-	"pmbBot/broker"
-	"pmbBot/configuration"
+	"pmBot/broker"
+	"pmBot/configuration"
 	"sync"
 
 	log "github.com/sirupsen/logrus"

@@ -3,10 +3,10 @@ package main
 import (
 	"os"
 	"os/signal"
-	"pmbBot/broker"
-	"pmbBot/configuration"
-	"pmbBot/discord"
-	"pmbBot/reddit"
+	"pmBot/broker"
+	"pmBot/configuration"
+	"pmBot/discord"
+	"pmBot/reddit"
 	"sync"
 	"syscall"
 
@@ -74,7 +74,6 @@ func main() {
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
 	for {
 		msg1 := <-sc
-		//brokerInstance.SendMessage("DISCORD", broker.ChannelMessage{Topic: "", Content: "HEY hO"})
 		for _, module := range modules {
 			go module.Stop()
 		}
