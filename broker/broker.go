@@ -51,14 +51,22 @@ type Module interface {
 
 //ChannelMessage -
 type ChannelMessage struct {
-	Topic   string
-	Content interface{}
-	Sender  string
+	Topic          string
+	Content        interface{}
+	Sender         string
+	Receiver       string
+	OriginalSender string
+}
+
+//NewChannelTopicMessage -
+func NewChannelTopicMessage(sender string, topic string) ChannelMessage {
+	returnMessage := ChannelMessage{Sender: sender, Topic: topic}
+	return returnMessage
 }
 
 //NewChannelMessage -
-func NewChannelMessage(sender string, topic string) ChannelMessage {
-	returnMessage := ChannelMessage{Sender: sender, Topic: topic}
+func NewChannelMessage(sender, topic, content string) ChannelMessage {
+	returnMessage := ChannelMessage{Sender: sender, Topic: topic, Content: content}
 	return returnMessage
 }
 
@@ -118,12 +126,21 @@ func (selfBroker *Broker) sendMessage(serviceName string, message ChannelMessage
 
 func (selfBroker *Broker) processMessage(message ChannelMessage) {
 
-	//Broadcast
-	for _, value := range selfBroker.subscriptions[message.Topic] {
-		if selfBroker.services[value].active {
-			selfBroker.sendMessage(value, message)
+	if message.Receiver == "" {
+		//Broadcast
+		if message.OriginalSender == "" {
+			for _, value := range selfBroker.subscriptions[message.Topic] {
+				if selfBroker.services[value].active {
+					selfBroker.sendMessage(value, message)
+				}
+
+			}
+		} else {
+			selfBroker.services[message.OriginalSender].privateChannel.send(message)
 		}
 
+	} else {
+		selfBroker.sendMessage(message.Receiver, message)
 	}
 
 	if message.Topic == "STATUS" {

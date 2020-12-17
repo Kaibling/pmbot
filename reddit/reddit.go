@@ -1,6 +1,7 @@
 package reddit
 
 import (
+	"fmt"
 	"pmbot/broker"
 	"pmbot/configuration"
 	"sync"
@@ -22,6 +23,7 @@ type GrabBot struct {
 }
 
 //Post -
+
 func (r *GrabBot) Post(post *reddit.Post) error {
 	if post.Subreddit == r.subReddit {
 		r.publicChannel.OutgoingChannel <- broker.ChannelMessage{Topic: "REDDIT", Content: post.Title + "\n" + post.URL}
@@ -72,6 +74,18 @@ func (r *GrabBot) Start(wg *sync.WaitGroup) {
 			r.privateChannel.OutgoingChannel <- broker.ChannelMessage{Topic: "STATUS", Sender: r.name, Content: "OK"}
 			log.Debugf("privateChannel: Healthcheck fine ")
 		}
+		if message.Topic == "REDDIT_HARVEST" {
+			harvest := r.harvestSubreddit(message.Content.(string))
+			log.Println(harvest.Posts)
+			log.Println(len(harvest.Posts))
+			result := ""
+			for _, post := range harvest.Posts[:3] {
+				result += fmt.Sprintf(`[%d] %s posted "%s"\n`, post.CreatedUTC, post.Author, post.Title)
+				//log.Printf(`[%d] %s posted "%s"\n`, post.CreatedUTC, post.Author, post.Title)
+			}
+			r.publicChannel.OutgoingChannel <- broker.ChannelMessage{Topic: "REDDIT", Sender: r.name, Content: result}
+		}
+
 	}
 
 }
@@ -99,4 +113,13 @@ func (r *GrabBot) GetServiceName() string {
 func (r *GrabBot) SetChannels(pubChannel broker.MultiPlexChannel, privChannel broker.MultiPlexChannel) {
 	r.publicChannel = pubChannel
 	r.privateChannel = privChannel
+}
+
+func (r *GrabBot) harvestSubreddit(subRedditName string) *reddit.Harvest {
+	harvest, err := r.bot.Listing(subRedditName, "")
+	if err != nil {
+		log.Println("Failed to fetch "+subRedditName, err)
+		return nil
+	}
+	return &harvest
 }

@@ -3,6 +3,7 @@ package discord
 import (
 	"pmbot/broker"
 	"pmbot/configuration"
+	"strings"
 	"sync"
 
 	"github.com/bwmarrin/discordgo"
@@ -95,18 +96,28 @@ func (selfDiscBot *DiscBot) messageCreate(s *discordgo.Session, m *discordgo.Mes
 
 	if m.GuildID == "" {
 		log.Infof("Private Message %s %s", m.ChannelID, m.Author.Username)
+		command := strings.Split(m.Content, " ")
 		if m.Content == "version" {
 			selfDiscBot.sendNewData(configuration.Configuration.Variables["Version"], m.ChannelID)
 		}
 		if m.Content == "status" {
 			log.Infof("Status request from %s", m.Author.Username)
-			statusRequest := broker.NewChannelMessage(selfDiscBot.name, "STATUS")
+			statusRequest := broker.NewChannelTopicMessage(selfDiscBot.name, "STATUS")
 			selfDiscBot.privateChannel.OutgoingChannel <- statusRequest
 
 			log.Debugf("waiting for broker on %#v", selfDiscBot.privateChannel.IncomingChannel)
 			response := <-selfDiscBot.privateChannel.IncomingChannel
 
 			log.Debugf("Response from %#v %#v", selfDiscBot.privateChannel, response)
+			selfDiscBot.sendNewData(response.Content.(string), m.ChannelID)
+		}
+		if command[0] == "harvest" {
+			statusRequest := broker.ChannelMessage{Sender: selfDiscBot.name, Topic: "REDDIT_HARVEST", Content: command[1], Receiver: "REDDIT", OriginalSender: "DISCORD"}
+			selfDiscBot.privateChannel.OutgoingChannel <- statusRequest
+
+			log.Debugf("waiting for broker on %#v", selfDiscBot.privateChannel.IncomingChannel)
+			response := <-selfDiscBot.privateChannel.IncomingChannel
+
 			selfDiscBot.sendNewData(response.Content.(string), m.ChannelID)
 		}
 		return
