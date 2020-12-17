@@ -47,14 +47,16 @@ func InitModule(username string, clientID string, secret string, password string
 
 //Start -
 func (r *GrabBot) Start(wg *sync.WaitGroup) {
+	r.wg = wg
 	cfg := graw.Config{Subreddits: []string{r.subReddit}}
 	stop, wait, err := graw.Run(r, r.bot, cfg)
 	if err != nil {
 		log.Errorln("Failed to start graw run: ", err)
+		r.Stop()
 		return
 	}
 	r.stopFn = stop
-	r.wg = wg
+
 	log.Infoln("reddit module is now running...")
 	go wait()
 
@@ -76,9 +78,18 @@ func (r *GrabBot) Start(wg *sync.WaitGroup) {
 
 //Stop -
 func (r *GrabBot) Stop() {
-	r.stopFn()
+
+	if r.stopFn == nil {
+		log.Errorf("bot cannot be closed and not be started")
+	} else {
+		r.stopFn()
+	}
+	if r.wg == nil {
+		log.Errorf("Waitgroup cannot be done, if not started")
+	} else {
+		r.wg.Done()
+	}
 	log.Info("redditbot stopped")
-	r.wg.Done()
 }
 
 func (r *GrabBot) GetServiceName() string {

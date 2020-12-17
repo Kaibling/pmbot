@@ -11,6 +11,7 @@ import (
 type messageService struct {
 	publicChannel  *MultiPlexChannel
 	privateChannel *MultiPlexChannel
+	active         bool
 }
 
 //MultiPlexChannel -
@@ -21,8 +22,8 @@ type MultiPlexChannel struct {
 
 func newMultiPlexChannel() MultiPlexChannel {
 	returnChannel := MultiPlexChannel{}
-	returnChannel.IncomingChannel = make(chan ChannelMessage)
-	returnChannel.OutgoingChannel = make(chan ChannelMessage)
+	returnChannel.IncomingChannel = make(chan ChannelMessage, 2)
+	returnChannel.OutgoingChannel = make(chan ChannelMessage, 2)
 	return returnChannel
 }
 
@@ -63,7 +64,7 @@ func NewChannelMessage(sender string, topic string) ChannelMessage {
 
 //Broker -
 type Broker struct {
-	services      map[string]messageService
+	services      map[string]*messageService
 	subscriptions map[string][]string
 	blocker       chan ChannelMessage
 }
@@ -71,7 +72,7 @@ type Broker struct {
 //InitBroker -
 func InitBroker() *Broker {
 	broker := &Broker{}
-	broker.services = make(map[string]messageService)
+	broker.services = make(map[string]*messageService)
 	broker.subscriptions = make(map[string][]string)
 	broker.blocker = make(chan ChannelMessage)
 	return broker
@@ -86,9 +87,10 @@ func (selfBroker *Broker) AddService(module Module) {
 	messageService := messageService{
 		publicChannel:  &pubChannel,
 		privateChannel: &privChannel,
+		active:         true,
 	}
 	module.SetChannels(pubChannel.invert(), privChannel.invert())
-	selfBroker.services[module.GetServiceName()] = messageService
+	selfBroker.services[module.GetServiceName()] = &messageService
 	log.Debugf("saved module %s in broker \n", module.GetServiceName())
 	log.Debugf("pub: %#v priv: %v", pubChannel, privChannel)
 
@@ -118,7 +120,10 @@ func (selfBroker *Broker) processMessage(message ChannelMessage) {
 
 	//Broadcast
 	for _, value := range selfBroker.subscriptions[message.Topic] {
-		selfBroker.sendMessage(value, message)
+		if selfBroker.services[value].active {
+			selfBroker.sendMessage(value, message)
+		}
+
 	}
 
 	if message.Topic == "STATUS" {
@@ -127,26 +132,33 @@ func (selfBroker *Broker) processMessage(message ChannelMessage) {
 		statusMessage := ""
 		statusChannel := make(chan ChannelMessage)
 		var wg sync.WaitGroup
-		wg.Add(len(selfBroker.services))
-		for key := range selfBroker.services {
-			go selfBroker.checkStatus(key, statusChannel, &wg)
+		goroutineCount := 0
+		for key, val := range selfBroker.services {
+			if val.active {
+				goroutineCount++
+			} else {
+				statusMessage += key + ":\t inactive\n"
+			}
 		}
 
-		for i := 0; i < len(selfBroker.services); i++ {
+		wg.Add(goroutineCount)
+		for key, val := range selfBroker.services {
+			if val.active {
+				go selfBroker.checkStatus(key, statusChannel, &wg)
+			} else {
+				log.Debugf("skipping inactive service %s", key)
+			}
+		}
+
+		for i := 0; i < goroutineCount; i++ {
 			select {
 			case response := <-statusChannel:
-				if response.Content.(string) != "OK" {
-					statusMessage += response.Sender + ":" + response.Content.(string)
-				}
+				statusMessage += response.Sender + ":\t" + response.Content.(string) + "\n"
 			}
 		}
 		wg.Wait()
-		if statusMessage == "" {
-			statusMessage = "OK"
-		}
-		log.Debugf("send message to %#v", selfBroker.services[message.Sender].privateChannel.OutgoingChannel)
 		selfBroker.services[message.Sender].privateChannel.OutgoingChannel <- ChannelMessage{Topic: "STATUS", Content: statusMessage}
-		log.Debugf("Health status send to module")
+		log.Debugf("send message to %#v", selfBroker.services[message.Sender].privateChannel.OutgoingChannel)
 	}
 }
 
@@ -182,7 +194,7 @@ func (selfBroker *Broker) Start() {
 		channels = append(channels, val.privateChannel.IncomingChannel)
 		channels = append(channels, val.publicChannel.IncomingChannel)
 	}
-
+	log.Infoln("Broker module is now running...")
 	for {
 		message, x := recvFromAny(channels)
 		log.Debugf("Received %v from ch%v", message, x)
@@ -195,21 +207,28 @@ func (selfBroker *Broker) Start() {
 }
 
 func (selfBroker *Broker) checkStatus(serviceName string, statusChannel chan ChannelMessage, wg *sync.WaitGroup) {
-	log.Debugf("Status request to module reddit %v", selfBroker.services[serviceName].publicChannel.IncomingChannel)
+	log.Debugf("Status request to module %s %v", serviceName, selfBroker.services[serviceName].publicChannel.IncomingChannel)
 	selfBroker.services[serviceName].publicChannel.OutgoingChannel <- ChannelMessage{Topic: "STATUS"}
 
 	timeout := make(chan bool, 1)
 	go func() {
-		time.Sleep(2 * time.Second)
+		time.Sleep(1 * time.Second)
 		timeout <- true
 	}()
-	overallStatus := "OK"
+	var overallStatus string
 	select {
+
 	case statusMessage := <-selfBroker.services[serviceName].privateChannel.IncomingChannel:
 		log.Debugf("response from %s with %#v", statusMessage.Sender, statusMessage.Content)
+		overallStatus = statusMessage.Content.(string)
 	case <-timeout:
+		log.Debugf("Timeout from %s", serviceName)
+		//remove service from broker
 		overallStatus = "Timeout from " + serviceName
+		selfBroker.services[serviceName].active = false
+
 	}
+
 	statusChannel <- ChannelMessage{Sender: serviceName, Content: overallStatus}
 	wg.Done()
 }

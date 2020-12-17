@@ -19,9 +19,10 @@ type DiscBot struct {
 }
 
 //SendNewData sends the message to the channel
-func (selfDiscBot *DiscBot) SendNewData(data string, channelID string) {
+func (selfDiscBot *DiscBot) sendNewData(data string, channelID string) {
 	selfDiscBot.bot.ChannelMessageSend(channelID, data)
-	log.Infof("send %s to %s\n", data, channelID)
+	log.Infof("send Data to  %s\n", channelID)
+	log.Debugf("send %#v\n", data)
 }
 
 //InitModule configures Discord bot
@@ -40,8 +41,6 @@ func InitModule(token string) *DiscBot {
 //Start Starts the discord bot
 func (selfDiscBot *DiscBot) Start(wg *sync.WaitGroup) {
 	selfDiscBot.wg = wg
-	log.Infof("%#v", selfDiscBot.wg)
-
 	err := selfDiscBot.bot.Open()
 	if err != nil {
 		log.Errorln("Error starting server: ", err)
@@ -57,11 +56,11 @@ func (selfDiscBot *DiscBot) Start(wg *sync.WaitGroup) {
 		request := <-selfDiscBot.publicChannel.IncomingChannel
 		log.Debugf("request: %#v", request)
 		if request.Topic == "REDDIT" {
-			selfDiscBot.SendNewData(request.Content.(string), "786978601891135519")
+			selfDiscBot.sendNewData(request.Content.(string), "786978601891135519")
 		}
 		if request.Topic == "STATUS" {
 			selfDiscBot.privateChannel.OutgoingChannel <- broker.ChannelMessage{Topic: "STATUS", Sender: selfDiscBot.name, Content: "OK"}
-			log.Debugf("privateChannel: Healthcheck fine ")
+			log.Debugf("Healthcheck fine")
 		}
 
 	}
@@ -79,7 +78,7 @@ func (selfDiscBot *DiscBot) Stop() {
 	} else {
 		selfDiscBot.wg.Done()
 	}
-	log.Infoln("Discort bot stopped")
+	log.Infoln("Discord bot stopped")
 }
 func (selfDiscBot *DiscBot) GetServiceName() string {
 	return selfDiscBot.name
@@ -97,17 +96,18 @@ func (selfDiscBot *DiscBot) messageCreate(s *discordgo.Session, m *discordgo.Mes
 	if m.GuildID == "" {
 		log.Infof("Private Message %s %s", m.ChannelID, m.Author.Username)
 		if m.Content == "version" {
-			s.ChannelMessageSend(m.ChannelID, configuration.Configuration.Variables["Version"])
+			selfDiscBot.sendNewData(configuration.Configuration.Variables["Version"], m.ChannelID)
 		}
 		if m.Content == "status" {
-			log.Debugf("Status request from %s\n sending to %v", m.Author.Username, selfDiscBot.privateChannel.OutgoingChannel)
+			log.Infof("Status request from %s", m.Author.Username)
 			statusRequest := broker.NewChannelMessage(selfDiscBot.name, "STATUS")
 			selfDiscBot.privateChannel.OutgoingChannel <- statusRequest
+
 			log.Debugf("waiting for broker on %#v", selfDiscBot.privateChannel.IncomingChannel)
 			response := <-selfDiscBot.privateChannel.IncomingChannel
+
 			log.Debugf("Response from %#v %#v", selfDiscBot.privateChannel, response)
-			s.ChannelMessageSend(m.ChannelID, response.Content.(string))
-			log.Debugf("status message sent to %s %s\n", m.ChannelID, m.Author.Username)
+			selfDiscBot.sendNewData(response.Content.(string), m.ChannelID)
 		}
 		return
 	}
@@ -115,7 +115,6 @@ func (selfDiscBot *DiscBot) messageCreate(s *discordgo.Session, m *discordgo.Mes
 	log.Infof("%s %s", m.ChannelID, m.Author.Username)
 	if m.ChannelID == "786978601891135519" {
 		response := m.Author.Username + ": " + m.Content + "\n"
-		s.ChannelMessageSend(m.ChannelID, response)
-		log.Infof("send %s to %s\n", response, m.ChannelID)
+		selfDiscBot.sendNewData(response, "786978601891135519")
 	}
 }

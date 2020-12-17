@@ -7,6 +7,7 @@ import (
 	"pmbot/configuration"
 	"pmbot/discord"
 	"pmbot/reddit"
+	"pmbot/scheduler"
 	"sync"
 	"syscall"
 
@@ -21,6 +22,7 @@ func init() {
 	log.SetReportCaller(true)
 	//log.SetFormatter(&log.JSONFormatter{})
 	log.SetLevel(log.DebugLevel)
+	//log.SetLevel(log.InfoLevel)
 
 	//CONFIG
 	config := configuration.Config{
@@ -57,6 +59,8 @@ func main() {
 
 	//discord
 	modules = append(modules, discord.InitModule(configuration.Configuration.DiscordToken))
+	//Scheduler
+	modules = append(modules, scheduler.InitModule())
 
 	brokerInstance := broker.InitBroker()
 	brokerInstance.SubscribeTopic("DISCORD", "REDDIT")
@@ -78,7 +82,7 @@ func main() {
 			go module.Stop()
 		}
 		wg.Wait()
-		log.Infoln("Stopp die scheiße", msg1)
+		log.Debugln("Stopp die scheiße", msg1)
 		return
 	}
 }
